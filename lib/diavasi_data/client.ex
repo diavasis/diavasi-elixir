@@ -2,47 +2,209 @@ defmodule Diavasi.Data.Client do
   @moduledoc """
   Supervised consumer for the `diavasi.data.v1` stream.
 
-  Put `Diavasi.Data.Client` in a supervision tree. `stream/1` yields batches.
-  The caller acks with `ack/2`. `leave/1` is the clean stop. Dropping the
-  process, or `disconnect/1`, returns unacked batches to the server. This
-  client does not store a cursor and does not dedupe on `record_id`.
+  Put this module under a supervisor. `start_link/1` opens TLS, sends Hello
+  version 1, then JoinGroup, then one FlowControl. `stream/1` and
+  `next_batch/1` yield `Diavasi.Data.V1.RecordBatch`. `ack/2` acks a batch.
+  `leave/1` sends Leave and half-closes the request. `disconnect/1` drops the
+  socket without Leave, and the server replays unacked batches. The client
+  stores no cursor and does not dedupe on `record_id`. Reconnect with the same
+  consumer id.
+
+  Option lists are `t:Diavasi.Data.Client.Behaviour.start_options/0` and
+  `t:Diavasi.Data.Client.Behaviour.run_options/0`.
+
+  ## Errors
+
+  A failed handshake or read uses these strings:
+
+    * `"protocol error N: message"` for codes 1 bad version, 2 bad state,
+      3 unknown ack, 4 duplicate ack, 5 group not running, 6 unsupported,
+      7 internal, 8 heartbeat timeout
+    * `"grpc STATUS: message"` for a non-zero gRPC status. A rejected token is
+      `"grpc 16: unauthorized"` when the server sends that trailer
+    * `"http2 error \#{inspect(reason)}"` when the transport read fails
+    * `"incomplete consume records=N batches=M"` from `run/1` when the stream
+      ends before `:total` records
+    * `"stream closed"` and `"unexpected frame ..."` during the handshake
+
+  `start_link/1` returns a transport failure unchanged, for example
+  `{:error, :econnrefused}`. `run/1` runs that failure through `inspect/1`,
+  so the same failure is `{:error, ":econnrefused"}`.
+
+  ## Mocks
+
+  `put_client/1` installs another `Diavasi.Data.Client.Behaviour`:
+
+      Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Data.Client.Behaviour)
+      Diavasi.Data.Client.put_client(MyApp.DiavasiMock)
+
+  `config :diavasi, client: MyApp.DiavasiMock` is the same switch.
+  `reset_client/0` restores this module. Call `Mox.set_mox_global()` when the
+  code under test runs in another process.
+
+  `Diavasi.Data.HTTP.put_client/1` replaces `Mint.HTTP` and keeps this client.
+  That mock also needs `Mox.set_mox_global()`, because the GenServer owns the socket.
   """
 
   use GenServer, restart: :transient
 
+  @behaviour Diavasi.Data.Client.Behaviour
+
+  alias Diavasi.Data.HTTP
   alias Diavasi.Data.V1.{Ack, Envelope, FlowControl, Hello, JoinGroup, Leave}
 
   @path "/diavasi.data.v1.DataPlane/Consume"
 
   @doc """
-  Start a client.
+  Open a client, complete the handshake, and link it to the caller.
 
-  ## Options
+  `opts` is a `t:Diavasi.Data.Client.Behaviour.start_options/0`.
 
-    * `:addr` - `host:port` of the data plane (required)
-    * `:ca` - path to the data-plane CA file (required)
-    * `:token` - bearer token (required)
-    * `:group` - group id (required)
-    * `:consumer` - consumer id, default `"elixir"`
-    * `:max_in_flight` - unacked batches, default `1`
+    * `:addr` - required `String.t()`, `host:port` of the data plane.
+    * `:ca` - required `Path.t()`, data-plane CA file.
+    * `:token` - required `String.t()`, bearer token.
+    * `:group` - required `String.t()`, group id.
+    * `:consumer` - optional `String.t()`, default `"elixir"`.
+    * `:max_in_flight` - optional `non_neg_integer()`, default `1`.
+
+  Returns `{:ok, pid}` after Hello, JoinGroup, and FlowControl.
+  Returns `{:error, reason}` on connect or handshake failure. See the module
+  docs for `reason`. Linking happens only after init succeeds, so a failure
+  is a return value.
+
+  A missing option or a bad `:addr` fails in `init/1`:
+
+    * `{:error, {%KeyError{}, stacktrace}}` when a required key is missing
+    * `{:error, {{:badmatch, parts}, stacktrace}}` when `:addr` is not `host:port`
+    * `{:error, {:badarg, stacktrace}}` when the port is not an integer
+
+  ## Examples
+
+      iex> {:error, {%KeyError{key: :addr}, _}} = Diavasi.Data.Client.start_link([])
+      iex> {:error, {{:badmatch, ["localhost"]}, _}} =
+      ...>   Diavasi.Data.Client.start_link(addr: "localhost", ca: "ca.pem", token: "t", group: "g")
+      iex> {:error, {:badarg, _}} =
+      ...>   Diavasi.Data.Client.start_link(addr: "127.0.0.1:nope", ca: "ca.pem", token: "t", group: "g")
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :start_link, fn opts ->
+      ...>   "127.0.0.1:7710" = opts[:addr]
+      ...>   "/tmp/diavasi-sdk/dataplane-ca.crt" = opts[:ca]
+      ...>   "sdk-demo" = opts[:token]
+      ...>   "demo" = opts[:group]
+      ...>   "elixir" = opts[:consumer]
+      ...>   1 = opts[:max_in_flight]
+      ...>   {:ok, :started}
+      ...> end)
+      iex> Diavasi.Data.Client.start_link(
+      ...>   addr: "127.0.0.1:7710",
+      ...>   ca: "/tmp/diavasi-sdk/dataplane-ca.crt",
+      ...>   token: "sdk-demo",
+      ...>   group: "demo",
+      ...>   consumer: "elixir",
+      ...>   max_in_flight: 1
+      ...> )
+      {:ok, :started}
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :start_link, fn _opts ->
+      ...>   {:error, "protocol error 5: not running"}
+      ...> end)
+      iex> Diavasi.Data.Client.start_link(addr: "127.0.0.1:7710", ca: "ca.pem", token: "t", group: "demo")
+      {:error, "protocol error 5: not running"}
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
   """
-  @spec start_link(keyword()) :: GenServer.on_start()
+  @spec start_link(Diavasi.Data.Client.Behaviour.start_options()) :: GenServer.on_start()
+  @impl Diavasi.Data.Client.Behaviour
   def start_link(opts) when is_list(opts) do
-    # Link after init so a refused connection or a failed handshake
-    # comes back as {:error, reason}.
-    case GenServer.start(__MODULE__, opts) do
-      {:ok, pid} ->
-        Process.link(pid)
-        {:ok, pid}
-
-      other ->
-        other
-    end
+    dispatch(:start_link, [opts], fn -> open(opts) end)
   end
 
-  @doc "Yield batches from a running client. Ack each `batch.batch_id`."
+  @doc """
+  Install `module` for every `Diavasi.Data.Client.Behaviour` callback.
+
+  `module` is an atom and must not be this module. Returns `:ok`.
+  Raises `FunctionClauseError` when `module` is `Diavasi.Data.Client`.
+  `reset_client/0` clears the setting.
+
+  ## Examples
+
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn opts -> {:ok, [opts[:total]], [1]} end)
+      iex> Diavasi.Data.Client.run(total: 2, group: "demo")
+      {:ok, [2], [1]}
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+  """
+  @spec put_client(module()) :: :ok
+  def put_client(module) when is_atom(module) and module != __MODULE__ do
+    Application.put_env(:diavasi, :client, module)
+  end
+
+  @doc """
+  Clear `put_client/1` so later calls use this module.
+
+  Returns `:ok`.
+
+  ## Examples
+
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+      iex> Application.get_env(:diavasi, :client)
+      nil
+  """
+  @spec reset_client() :: :ok
+  def reset_client do
+    Application.delete_env(:diavasi, :client)
+    :ok
+  end
+
+  @doc """
+  Stream batches from `pid`.
+
+  Returns a stream of `Diavasi.Data.V1.RecordBatch`. Ack each `batch.batch_id`.
+  The stream stops when `next_batch/1` returns `:done`.
+  It raises `RuntimeError` when `next_batch/1` returns `{:error, reason}`.
+  The exception message is `reason`.
+
+  `pid` must be a pid. A non-pid raises `FunctionClauseError`.
+
+  ## Examples
+
+      iex> batch = %Diavasi.Data.V1.RecordBatch{
+      ...>   batch_id: 7,
+      ...>   records: [%Diavasi.Data.V1.Record{record_id: 1, payload: "a"}]
+      ...> }
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :stream, fn pid ->
+      ...>   true = is_pid(pid)
+      ...>   [batch]
+      ...> end)
+      iex> [got] = self() |> Diavasi.Data.Client.stream() |> Enum.to_list()
+      iex> {got.batch_id, hd(got.records).payload}
+      {7, "a"}
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :stream, fn _pid ->
+      ...>   raise "protocol error 5: not running"
+      ...> end)
+      iex> try do
+      ...>   self() |> Diavasi.Data.Client.stream() |> Enum.to_list()
+      ...> rescue
+      ...>   RuntimeError -> :raised
+      ...> end
+      :raised
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+  """
   @spec stream(pid()) :: Enumerable.t()
+  @impl Diavasi.Data.Client.Behaviour
   def stream(pid) when is_pid(pid) do
+    dispatch(:stream, [pid], fn -> stream_batches(pid) end)
+  end
+
+  defp stream_batches(pid) do
     Stream.resource(
       fn -> :open end,
       fn
@@ -60,32 +222,210 @@ defmodule Diavasi.Data.Client do
     )
   end
 
-  @doc "Take the next batch. Returns `{:ok, batch}`, `:done`, or `{:error, reason}`."
-  @spec next_batch(pid()) :: {:ok, map()} | :done | {:error, String.t()}
-  def next_batch(pid), do: GenServer.call(pid, :next_batch, 60_000)
+  @doc """
+  Take the next batch from `pid`.
 
-  @doc "Ack a batch by `batch_id`."
-  @spec ack(pid(), non_neg_integer()) :: :ok
-  def ack(pid, batch_id), do: GenServer.call(pid, {:ack, batch_id})
+  Returns `{:ok, batch}` where `batch` is a `Diavasi.Data.V1.RecordBatch`,
+  `:done` when the stream has ended, or `{:error, reason}` with a string
+  from the module docs.
 
-  @doc "Send Leave and stop the stream."
-  @spec leave(pid()) :: :ok
-  def leave(pid), do: GenServer.call(pid, :leave)
+  The call waits up to 60 seconds, then exits with `:timeout`.
+  It exits with `:noproc` when `pid` is not alive.
 
-  @doc "Close the stream without Leave so unacked batches are replayed."
-  @spec disconnect(pid()) :: :ok
-  def disconnect(pid) do
-    if Process.alive?(pid), do: GenServer.stop(pid, :normal)
-    :ok
+  ## Examples
+
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :next_batch, fn _pid ->
+      ...>   {:ok, %Diavasi.Data.V1.RecordBatch{batch_id: 4, records: []}}
+      ...> end)
+      iex> {:ok, batch} = Diavasi.Data.Client.next_batch(self())
+      iex> batch.batch_id
+      4
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :next_batch, fn _pid -> :done end)
+      iex> Diavasi.Data.Client.next_batch(self())
+      :done
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :next_batch, fn _pid ->
+      ...>   {:error, "protocol error 5: not running"}
+      ...> end)
+      iex> Diavasi.Data.Client.next_batch(self())
+      {:error, "protocol error 5: not running"}
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+  """
+  @spec next_batch(pid()) ::
+          {:ok, Diavasi.Data.V1.RecordBatch.t()} | :done | {:error, String.t()}
+  @impl Diavasi.Data.Client.Behaviour
+  def next_batch(pid) do
+    dispatch(:next_batch, [pid], fn -> GenServer.call(pid, :next_batch, 60_000) end)
   end
 
   @doc """
-  Consume `total` records, acking each batch.
+  Ack `batch_id` on `pid`.
 
-  `halt_after` closes after that many acks without Leave.
+  `batch_id` is the `batch_id` field of a `Diavasi.Data.V1.RecordBatch`.
+  Returns `:ok` after the Ack frame is written. The client does not wait for
+  a server reply.
+
+  Exits with `:noproc` when `pid` is not alive, and with `:timeout` after 5 seconds.
+
+  ## Examples
+
+      iex> pid = spawn(fn -> :ok end)
+      iex> ref = Process.monitor(pid)
+      iex> receive do
+      ...>   {:DOWN, ^ref, :process, ^pid, _} -> :down
+      ...> end
+      :down
+      iex> {:noproc, _} = catch_exit(Diavasi.Data.Client.ack(pid, 1))
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :ack, fn _pid, 7 -> :ok end)
+      iex> Diavasi.Data.Client.ack(self(), 7)
+      :ok
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
   """
-  @spec run(keyword()) :: {:ok, [non_neg_integer()], [non_neg_integer()]} | {:error, String.t()}
+  @spec ack(pid(), non_neg_integer()) :: :ok
+  @impl Diavasi.Data.Client.Behaviour
+  def ack(pid, batch_id) do
+    dispatch(:ack, [pid, batch_id], fn -> GenServer.call(pid, {:ack, batch_id}) end)
+  end
+
+  @doc """
+  Send Leave on `pid` and half-close the request stream.
+
+  Returns `:ok`. Unacked batches are not replayed after a successful Leave.
+  Exits with `:noproc` when `pid` is not alive, and with `:timeout` after 5 seconds.
+  If the transport does not return `{:ok, conn}` for `:eof`, the process exits
+  and this call exits with that reason.
+
+  ## Examples
+
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :leave, fn pid ->
+      ...>   true = is_pid(pid)
+      ...>   :ok
+      ...> end)
+      iex> Diavasi.Data.Client.leave(self())
+      :ok
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+  """
+  @spec leave(pid()) :: :ok
+  @impl Diavasi.Data.Client.Behaviour
+  def leave(pid) do
+    dispatch(:leave, [pid], fn -> GenServer.call(pid, :leave) end)
+  end
+
+  @doc """
+  Stop `pid` without sending Leave.
+
+  Returns `:ok`. The server replays batches that were not acked.
+  A `pid` that has already stopped is also `:ok`.
+
+  ## Examples
+
+      iex> pid = spawn(fn -> :ok end)
+      iex> ref = Process.monitor(pid)
+      iex> receive do
+      ...>   {:DOWN, ^ref, :process, ^pid, _} -> :down
+      ...> end
+      :down
+      iex> Diavasi.Data.Client.disconnect(pid)
+      :ok
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :disconnect, fn _pid -> :ok end)
+      iex> Diavasi.Data.Client.disconnect(self())
+      :ok
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+  """
+  @spec disconnect(pid()) :: :ok
+  @impl Diavasi.Data.Client.Behaviour
+  def disconnect(pid) do
+    dispatch(:disconnect, [pid], fn ->
+      if Process.alive?(pid), do: GenServer.stop(pid, :normal)
+      :ok
+    end)
+  end
+
+  @doc """
+  Ack `:total` records and then Leave.
+
+  `opts` is a `t:Diavasi.Data.Client.Behaviour.run_options/0`. It accepts every
+  `start_link/1` option, plus:
+
+    * `:total` - required `non_neg_integer()`, records to ack.
+    * `:halt_after` - optional `non_neg_integer()`. After this many acks the
+      client reads once more, waiting up to 5 seconds, ignores an exit from
+      that read, then `disconnect/1`s. Leave is not sent.
+
+  Returns `{:ok, record_ids, batch_ids}`. Both lists are non-negative integers
+  in ack order. Returns `{:error, reason}` on handshake failure, a short
+  stream (`"incomplete consume records=N batches=M"`), or a later read error.
+  Transport errors are `inspect/1` strings.
+
+  Raises `KeyError` when `:total` is missing. A bad address fails inside
+  `start_link/1` and is returned as `{:error, reason}` with the shapes
+  documented on `start_link/1`.
+
+  ## Examples
+
+      iex> try do
+      ...>   Diavasi.Data.Client.run([])
+      ...> rescue
+      ...>   KeyError -> :missing_total
+      ...> end
+      :missing_total
+      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      :ok
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn opts ->
+      ...>   8 = opts[:total]
+      ...>   1 = opts[:halt_after]
+      ...>   "demo" = opts[:group]
+      ...>   {:ok, [1, 2], [4]}
+      ...> end)
+      iex> Diavasi.Data.Client.run(
+      ...>   addr: "127.0.0.1:7710",
+      ...>   ca: "/tmp/diavasi-sdk/dataplane-ca.crt",
+      ...>   token: "sdk-demo",
+      ...>   group: "demo",
+      ...>   total: 8,
+      ...>   halt_after: 1
+      ...> )
+      {:ok, [1, 2], [4]}
+      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn _opts ->
+      ...>   {:error, "incomplete consume records=0 batches=0"}
+      ...> end)
+      iex> Diavasi.Data.Client.run(total: 8, group: "demo")
+      {:error, "incomplete consume records=0 batches=0"}
+      iex> Diavasi.Data.Client.reset_client()
+      :ok
+  """
+  @spec run(Diavasi.Data.Client.Behaviour.run_options()) ::
+          {:ok, [non_neg_integer()], [non_neg_integer()]} | {:error, String.t()}
+  @impl Diavasi.Data.Client.Behaviour
   def run(opts) do
+    dispatch(:run, [opts], fn -> consume(opts) end)
+  end
+
+  defp open(opts) do
+    # Link after init so a refused connection or a failed handshake
+    # comes back as {:error, reason}.
+    case GenServer.start(__MODULE__, opts) do
+      {:ok, pid} ->
+        Process.link(pid)
+        {:ok, pid}
+
+      other ->
+        other
+    end
+  end
+
+  defp consume(opts) do
     total = Keyword.fetch!(opts, :total)
     halt_after = Keyword.get(opts, :halt_after)
 
@@ -446,7 +786,14 @@ defmodule Diavasi.Data.Client do
 
   defp take_frames(buffer, acc), do: {Enum.reverse(acc), buffer}
 
-  defp http, do: Application.get_env(:diavasi, :http_client, Mint.HTTP)
+  defp dispatch(name, args, fun) do
+    case Application.get_env(:diavasi, :client) do
+      nil -> fun.()
+      module -> apply(module, name, args)
+    end
+  end
+
+  defp http, do: HTTP.client()
 
   defp format_error({:protocol, code, message}), do: "protocol error #{code}: #{message}"
   defp format_error({:grpc, status, message}), do: "grpc #{status}: #{message}"

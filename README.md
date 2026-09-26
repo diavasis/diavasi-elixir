@@ -387,7 +387,26 @@ Livebook notes are in [notebooks/demo.livemd](https://github.com/diavasis/diavas
 
 ## Test
 
-`mix coveralls` runs the suite and enforces the floor in `coveralls.json`. It passes without a server. With `DIAVASI_DATA_ADDR`, `DIAVASI_CA`, and `DIAVASI_API_TOKEN` set, the live test consumes `DIAVASI_TOTAL` records (default 8) from `DIAVASI_GROUP`.
+`mix coveralls` runs the suite and enforces the floor in `coveralls.json`. Tests tagged `:integration` talk to a Diavasi server and stay out of that run. Include them with:
+
+```bash
+mix test --include integration
+```
+
+With `DIAVASI_DATA_ADDR`, `DIAVASI_CA`, and `DIAVASI_API_TOKEN` set, the integration test consumes `DIAVASI_TOTAL` records (default 8) from `DIAVASI_GROUP`. Without those variables it passes without connecting.
+
+## Mocks
+
+`Diavasi.Data.Client.put_client/1` swaps in a module that implements `Diavasi.Data.Client.Behaviour`. Add `{:mox, "~> 1.2", only: :test}` to the service and turn the mock on from `test/test_helper.exs`:
+
+```elixir
+Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Data.Client.Behaviour)
+Diavasi.Data.Client.put_client(MyApp.DiavasiMock)
+```
+
+`config :diavasi, client: MyApp.DiavasiMock` in `config/test.exs` is the same switch. `Diavasi.Data.Client.reset_client/0` restores the real client. Call `Mox.set_mox_global()` when the code under test runs in another process.
+
+`Diavasi.Data.HTTP.put_client/1` is the lower-level switch. It keeps `Diavasi.Data.Client` and replaces `Mint.HTTP`, which is how this library scripts a Diavasi server. That mock needs `Mox.set_mox_global()` as well, because the GenServer owns the connection.
 
 ## Stage 0 bench
 

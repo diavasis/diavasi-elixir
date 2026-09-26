@@ -1,6 +1,39 @@
 defmodule DiavasiBench.TcpClient do
-  @moduledoc "Stage 0 TCP length-prefixed protobuf client."
+  @moduledoc """
+  Stage 0 TCP client. This protocol is separate from `Diavasi.Data.V1` and is
+  not part of the Hex package.
 
+  Frames are `<<byte_size::32, protobuf::binary>>` using `DiavasiBench.Envelope`.
+  """
+
+  @doc """
+  Connect, join, ack until `total_records`, print a JSON summary, and return `:ok`.
+
+  ## Options
+
+    * `:connect` - optional `String.t()`, `host:port`. Default `"127.0.0.1:9800"`.
+    * `:group_id` - optional `String.t()`. Default `"bench"`.
+    * `:total_records` - optional `non_neg_integer()`. Default `200`.
+    * `:max_in_flight` - optional `non_neg_integer()`. Default `2`.
+    * `:output` - optional `Path.t()`. Append one JSON line to this file.
+
+  Returns `:ok` after the server has delivered `:total_records`.
+
+  Raises `MatchError` when the TCP connect fails, for example
+  `{:error, :econnrefused}`. Raises `RuntimeError` when the server sends
+  `DiavasiBench.ErrorMessage`, and the message is that text.
+  A short read exits from `:gen_tcp.recv/2`.
+
+  ## Examples
+
+      iex> try do
+      ...>   DiavasiBench.TcpClient.run(connect: "127.0.0.1:1", total_records: 1)
+      ...> rescue
+      ...>   MatchError -> :refused
+      ...> end
+      :refused
+  """
+  @spec run(keyword()) :: :ok
   def run(opts \\ []) do
     connect = Keyword.get(opts, :connect, "127.0.0.1:9800")
     group_id = Keyword.get(opts, :group_id, "bench")

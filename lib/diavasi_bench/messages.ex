@@ -1,5 +1,26 @@
 defmodule DiavasiBench.Envelope do
-  @moduledoc false
+  @moduledoc """
+  One Stage 0 bench frame. `version` is `1`. `body` is one of
+  `{:join_group, DiavasiBench.JoinGroup.t()}`,
+  `{:joined, DiavasiBench.Joined.t()}`,
+  `{:record_batch, DiavasiBench.RecordBatch.t()}`,
+  `{:ack, DiavasiBench.Ack.t()}`,
+  `{:flow_control, DiavasiBench.FlowControl.t()}`,
+  `{:heartbeat, DiavasiBench.Heartbeat.t()}`,
+  or `{:error, DiavasiBench.ErrorMessage.t()}`.
+
+  This is not `Diavasi.Data.V1.Envelope`.
+
+  ## Examples
+
+      iex> envelope = %DiavasiBench.Envelope{
+      ...>   version: 1,
+      ...>   body: {:ack, %DiavasiBench.Ack{batch_id: 1}}
+      ...> }
+      iex> decoded = DiavasiBench.Envelope.decode(DiavasiBench.Envelope.encode(envelope))
+      iex> decoded.version
+      1
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:version, 1, type: :uint32)
@@ -16,7 +37,21 @@ defmodule DiavasiBench.Envelope do
 end
 
 defmodule DiavasiBench.JoinGroup do
-  @moduledoc false
+  @moduledoc """
+  Bench join request.
+
+  ## Fields
+
+    * `group_id` - `String.t()`.
+    * `consumer_id` - `String.t()`.
+
+  ## Examples
+
+      iex> join = %DiavasiBench.JoinGroup{group_id: "bench", consumer_id: "elixir"}
+      iex> decoded = DiavasiBench.JoinGroup.decode(DiavasiBench.JoinGroup.encode(join))
+      iex> {decoded.group_id, decoded.consumer_id}
+      {"bench", "elixir"}
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:group_id, 1, type: :string, json_name: "groupId")
@@ -24,7 +59,21 @@ defmodule DiavasiBench.JoinGroup do
 end
 
 defmodule DiavasiBench.Joined do
-  @moduledoc false
+  @moduledoc """
+  Bench join reply.
+
+  ## Fields
+
+    * `group_id` - `String.t()`.
+    * `consumer_id` - `String.t()`.
+
+  ## Examples
+
+      iex> joined = %DiavasiBench.Joined{group_id: "bench", consumer_id: "elixir"}
+      iex> decoded = DiavasiBench.Joined.decode(DiavasiBench.Joined.encode(joined))
+      iex> decoded.group_id
+      "bench"
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:group_id, 1, type: :string, json_name: "groupId")
@@ -32,7 +81,21 @@ defmodule DiavasiBench.Joined do
 end
 
 defmodule DiavasiBench.Record do
-  @moduledoc false
+  @moduledoc """
+  One bench record.
+
+  ## Fields
+
+    * `record_id` - `non_neg_integer()`.
+    * `payload` - `binary()`.
+
+  ## Examples
+
+      iex> record = %DiavasiBench.Record{record_id: 1, payload: "x"}
+      iex> decoded = DiavasiBench.Record.decode(DiavasiBench.Record.encode(record))
+      iex> {decoded.record_id, decoded.payload}
+      {1, "x"}
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:record_id, 1, type: :uint64, json_name: "recordId")
@@ -40,7 +103,22 @@ defmodule DiavasiBench.Record do
 end
 
 defmodule DiavasiBench.RecordBatch do
-  @moduledoc false
+  @moduledoc """
+  Bench batch.
+
+  ## Fields
+
+    * `batch_id` - `non_neg_integer()`.
+    * `records` - list of `DiavasiBench.Record`.
+    * `sent_at_unix_ns` - `integer()`. Send time in Unix nanoseconds.
+
+  ## Examples
+
+      iex> batch = %DiavasiBench.RecordBatch{batch_id: 1, records: [], sent_at_unix_ns: 0}
+      iex> decoded = DiavasiBench.RecordBatch.decode(DiavasiBench.RecordBatch.encode(batch))
+      iex> {decoded.batch_id, decoded.sent_at_unix_ns}
+      {1, 0}
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:batch_id, 1, type: :uint64, json_name: "batchId")
@@ -49,26 +127,73 @@ defmodule DiavasiBench.RecordBatch do
 end
 
 defmodule DiavasiBench.Ack do
-  @moduledoc false
+  @moduledoc """
+  Bench acknowledgement.
+
+  ## Fields
+
+    * `batch_id` - `non_neg_integer()`.
+
+  ## Examples
+
+      iex> ack = %DiavasiBench.Ack{batch_id: 1}
+      iex> decoded = DiavasiBench.Ack.decode(DiavasiBench.Ack.encode(ack))
+      iex> decoded.batch_id
+      1
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:batch_id, 1, type: :uint64, json_name: "batchId")
 end
 
 defmodule DiavasiBench.FlowControl do
-  @moduledoc false
+  @moduledoc """
+  Bench flow-control message.
+
+  ## Fields
+
+    * `max_in_flight` - `non_neg_integer()`.
+
+  ## Examples
+
+      iex> flow = %DiavasiBench.FlowControl{max_in_flight: 2}
+      iex> decoded = DiavasiBench.FlowControl.decode(DiavasiBench.FlowControl.encode(flow))
+      iex> decoded.max_in_flight
+      2
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:max_in_flight, 1, type: :uint32, json_name: "maxInFlight")
 end
 
 defmodule DiavasiBench.Heartbeat do
-  @moduledoc false
+  @moduledoc """
+  Empty bench keepalive.
+
+  ## Examples
+
+      iex> beat = %DiavasiBench.Heartbeat{}
+      iex> match?(%DiavasiBench.Heartbeat{}, DiavasiBench.Heartbeat.decode(DiavasiBench.Heartbeat.encode(beat)))
+      true
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 end
 
 defmodule DiavasiBench.ErrorMessage do
-  @moduledoc false
+  @moduledoc """
+  Bench error. `DiavasiBench.TcpClient` raises `message`.
+
+  ## Fields
+
+    * `message` - `String.t()`.
+
+  ## Examples
+
+      iex> err = %DiavasiBench.ErrorMessage{message: "closed"}
+      iex> decoded = DiavasiBench.ErrorMessage.decode(DiavasiBench.ErrorMessage.encode(err))
+      iex> decoded.message
+      "closed"
+  """
   use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field(:message, 1, type: :string)

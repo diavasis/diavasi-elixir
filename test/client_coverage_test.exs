@@ -1,8 +1,12 @@
 defmodule Diavasi.Data.ClientCoverageTest do
   use ExUnit.Case, async: false
 
+  import Mox
+
   alias Diavasi.Data.Client
-  alias Diavasi.Data.FakeHTTP
+  alias Diavasi.Data.HTTP
+  alias Diavasi.Data.HTTP.Mock
+  alias Diavasi.Data.HTTPScript
   alias Mix.Tasks.Diavasi.Consume
 
   alias Diavasi.Data.V1.{
@@ -17,13 +21,16 @@ defmodule Diavasi.Data.ClientCoverageTest do
     RecordBatch
   }
 
+  setup :set_mox_global
+  setup :verify_on_exit!
+
   setup do
     previous = Application.get_env(:diavasi, :http_client)
-    Application.put_env(:diavasi, :http_client, FakeHTTP)
+    HTTP.put_client(Mock)
 
     on_exit(fn ->
+      HTTP.reset_client()
       restore(:http_client, previous)
-      Application.delete_env(:diavasi, :http_agent)
     end)
 
     :ok
@@ -270,16 +277,14 @@ defmodule Diavasi.Data.ClientCoverageTest do
   end
 
   defp script(responses, script_opts \\ []) do
-    {:ok, agent} = FakeHTTP.start_link(responses, script_opts)
-    Application.put_env(:diavasi, :http_agent, agent)
-    agent
+    HTTPScript.install(responses, script_opts)
   end
 
   defp opts(extra \\ []),
     do: [addr: "127.0.0.1:1", ca: "ca.pem", token: "t", group: "demo"] ++ extra
 
   defp sent_bodies(agent) do
-    Enum.flat_map(FakeHTTP.sent(agent), &body_names/1)
+    Enum.flat_map(HTTPScript.sent(agent), &body_names/1)
   end
 
   defp body_names(:eof), do: [:eof]
