@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "27"
+
+      - name: Publish
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+
+        run: ./scripts/publish.sh
