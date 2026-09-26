@@ -1,6 +1,8 @@
 defmodule Diavasi.Data.ClientTest do
   use ExUnit.Case
 
+  alias Diavasi.Data.Client
+
   test "consume acks every batch when a data plane is configured" do
     addr = System.get_env("DIAVASI_DATA_ADDR")
     ca = System.get_env("DIAVASI_CA")
@@ -13,7 +15,7 @@ defmodule Diavasi.Data.ClientTest do
       total = (System.get_env("DIAVASI_TOTAL") || "8") |> String.to_integer()
 
       assert {:ok, record_ids, _batch_ids} =
-               Diavasi.Data.Client.run(
+               Client.run(
                  addr: addr,
                  ca: ca,
                  token: token,

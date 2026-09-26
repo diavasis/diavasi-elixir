@@ -14,11 +14,34 @@ defmodule Diavasi.Data.Client do
 
   @path "/diavasi.data.v1.DataPlane/Consume"
 
+  @doc """
+  Start a client.
+
+  ## Options
+
+    * `:addr` - `host:port` of the data plane (required)
+    * `:ca` - path to the data-plane CA file (required)
+    * `:token` - bearer token (required)
+    * `:group` - group id (required)
+    * `:consumer` - consumer id, default `"elixir"`
+    * `:max_in_flight` - unacked batches, default `1`
+  """
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) when is_list(opts) do
-    GenServer.start_link(__MODULE__, opts)
+    # Link after init so a refused connection or a failed handshake
+    # comes back as {:error, reason}.
+    case GenServer.start(__MODULE__, opts) do
+      {:ok, pid} ->
+        Process.link(pid)
+        {:ok, pid}
+
+      other ->
+        other
+    end
   end
 
   @doc "Yield batches from a running client. Ack each `batch.batch_id`."
+  @spec stream(pid()) :: Enumerable.t()
   def stream(pid) when is_pid(pid) do
     Stream.resource(
       fn -> :open end,
@@ -37,11 +60,20 @@ defmodule Diavasi.Data.Client do
     )
   end
 
+  @doc "Take the next batch. Returns `{:ok, batch}`, `:done`, or `{:error, reason}`."
+  @spec next_batch(pid()) :: {:ok, map()} | :done | {:error, String.t()}
   def next_batch(pid), do: GenServer.call(pid, :next_batch, 60_000)
+
+  @doc "Ack a batch by `batch_id`."
+  @spec ack(pid(), non_neg_integer()) :: :ok
   def ack(pid, batch_id), do: GenServer.call(pid, {:ack, batch_id})
+
+  @doc "Send Leave and stop the stream."
+  @spec leave(pid()) :: :ok
   def leave(pid), do: GenServer.call(pid, :leave)
 
   @doc "Close the stream without Leave so unacked batches are replayed."
+  @spec disconnect(pid()) :: :ok
   def disconnect(pid) do
     if Process.alive?(pid), do: GenServer.stop(pid, :normal)
     :ok
@@ -52,6 +84,7 @@ defmodule Diavasi.Data.Client do
 
   `halt_after` closes after that many acks without Leave.
   """
+  @spec run(keyword()) :: {:ok, [non_neg_integer()], [non_neg_integer()]} | {:error, String.t()}
   def run(opts) do
     total = Keyword.fetch!(opts, :total)
     halt_after = Keyword.get(opts, :halt_after)
@@ -69,6 +102,7 @@ defmodule Diavasi.Data.Client do
     end
   end
 
+  @impl GenServer
   def init(opts) do
     addr = Keyword.fetch!(opts, :addr)
     ca = Keyword.fetch!(opts, :ca)
@@ -81,7 +115,7 @@ defmodule Diavasi.Data.Client do
     port = String.to_integer(port_s)
 
     with {:ok, conn} <-
-           Mint.HTTP.connect(:https, host, port,
+           http().connect(:https, host, port,
              protocols: [:http2],
              mode: :passive,
              transport_opts: [
@@ -91,7 +125,7 @@ defmodule Diavasi.Data.Client do
              ]
            ),
          {:ok, conn, ref} <-
-           Mint.HTTP.request(
+           http().request(
              conn,
              "POST",
              @path,
@@ -122,7 +156,7 @@ defmodule Diavasi.Data.Client do
           {:ok, state}
 
         {:error, reason, state} ->
-          Mint.HTTP.close(state.conn)
+          http().close(state.conn)
           {:stop, format_error(reason)}
       end
     else
@@ -130,6 +164,7 @@ defmodule Diavasi.Data.Client do
     end
   end
 
+  @impl GenServer
   def handle_call(:next_batch, _from, state) do
     case pull(state) do
       {:batch, batch, state} -> {:reply, {:ok, batch}, state}
@@ -138,18 +173,21 @@ defmodule Diavasi.Data.Client do
     end
   end
 
+  @impl GenServer
   def handle_call({:ack, batch_id}, _from, state) do
     {:reply, :ok, send_env(state, %Envelope{version: 1, body: {:ack, %Ack{batch_id: batch_id}}})}
   end
 
+  @impl GenServer
   def handle_call(:leave, _from, state) do
     state = send_env(state, %Envelope{version: 1, body: {:leave, %Leave{}}})
-    {:ok, conn} = Mint.HTTP.stream_request_body(state.conn, state.ref, :eof)
+    {:ok, conn} = http().stream_request_body(state.conn, state.ref, :eof)
     {:reply, :ok, %{state | conn: conn, left: true}}
   end
 
+  @impl GenServer
   def terminate(_reason, %{conn: conn}) do
-    Mint.HTTP.close(conn)
+    http().close(conn)
     :ok
   end
 
@@ -162,23 +200,7 @@ defmodule Diavasi.Data.Client do
     else
       case next_batch(pid) do
         {:ok, batch} ->
-          ids = Enum.map(batch.records, & &1.record_id)
-          :ok = ack(pid, batch.batch_id)
-          batch_ids = batch_ids ++ [batch.batch_id]
-          record_ids = record_ids ++ ids
-
-          if is_integer(halt_after) and length(batch_ids) >= halt_after do
-            try do
-              GenServer.call(pid, :next_batch, 5_000)
-            catch
-              :exit, _ -> :ok
-            end
-
-            disconnect(pid)
-            {:ok, record_ids, batch_ids}
-          else
-            take(pid, total, halt_after, record_ids, batch_ids)
-          end
+          accept_batch(pid, total, halt_after, record_ids, batch_ids, batch)
 
         :done ->
           {:error,
@@ -188,6 +210,30 @@ defmodule Diavasi.Data.Client do
           {:error, reason}
       end
     end
+  end
+
+  defp accept_batch(pid, total, halt_after, record_ids, batch_ids, batch) do
+    ids = Enum.map(batch.records, & &1.record_id)
+    :ok = ack(pid, batch.batch_id)
+    batch_ids = batch_ids ++ [batch.batch_id]
+    record_ids = record_ids ++ ids
+
+    if is_integer(halt_after) and length(batch_ids) >= halt_after do
+      halt(pid, record_ids, batch_ids)
+    else
+      take(pid, total, halt_after, record_ids, batch_ids)
+    end
+  end
+
+  defp halt(pid, record_ids, batch_ids) do
+    try do
+      GenServer.call(pid, :next_batch, 5_000)
+    catch
+      :exit, _ -> :ok
+    end
+
+    disconnect(pid)
+    {:ok, record_ids, batch_ids}
   end
 
   defp handshake(state) do
@@ -324,7 +370,7 @@ defmodule Diavasi.Data.Client do
   defp collect([_ | rest], state, batches), do: collect(rest, state, batches)
 
   defp recv_events(state) do
-    case Mint.HTTP.recv(state.conn, 0, 30_000) do
+    case http().recv(state.conn, 0, 30_000) do
       {:ok, conn, responses} ->
         state = %{state | conn: conn}
 
@@ -333,13 +379,6 @@ defmodule Diavasi.Data.Client do
             {more, state} = events_from(response, state)
             {events ++ more, state}
           end)
-
-        events =
-          if Enum.any?(events, &match?({:done, _}, &1)) and events == [] do
-            events
-          else
-            events
-          end
 
         {:events, events, state}
 
@@ -391,7 +430,7 @@ defmodule Diavasi.Data.Client do
   defp heartbeat, do: %Envelope{version: 1, body: {:heartbeat, %Diavasi.Data.V1.Heartbeat{}}}
 
   defp send_env(%{conn: conn, ref: ref} = state, envelope) do
-    {:ok, conn} = Mint.HTTP.stream_request_body(conn, ref, frame(envelope))
+    {:ok, conn} = http().stream_request_body(conn, ref, frame(envelope))
     %{state | conn: conn}
   end
 
@@ -406,6 +445,8 @@ defmodule Diavasi.Data.Client do
   end
 
   defp take_frames(buffer, acc), do: {Enum.reverse(acc), buffer}
+
+  defp http, do: Application.get_env(:diavasi, :http_client, Mint.HTTP)
 
   defp format_error({:protocol, code, message}), do: "protocol error #{code}: #{message}"
   defp format_error({:grpc, status, message}), do: "grpc #{status}: #{message}"

@@ -1,0 +1,9 @@
+{
+  "minimum_coverage": 90,
+  "skip_files": [
+    "test/",
+    "lib/diavasi_data/messages.ex",
+    "lib/diavasi_bench",
+    "lib/mix/tasks/diavasi.bench.ex"
+  ]
+}

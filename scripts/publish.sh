@@ -3,7 +3,7 @@ set -euo pipefail
 version=$(python3 - <<'PY'
 import re
 text = open("mix.exs").read()
-match = re.search(r'version: "([0-9.]+)"', text)
+match = re.search(r'@version "([0-9.]+)"', text)
 if not match:
     raise SystemExit("version missing from mix.exs")
 print(match.group(1))

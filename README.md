@@ -383,11 +383,11 @@ Flags: `--addr`, `--ca`, `--token`, `--group`, `--consumer`, `--total`, `--max-i
 docker compose -f clients/docker-compose.yml --profile elixir up --abort-on-container-exit
 ```
 
-Livebook notes are in `notebooks/`. The Compose `notebook` profile serves [notebooks/demo.livemd](notebooks/demo.livemd) on port 8080.
+Livebook notes are in [notebooks/demo.livemd](https://github.com/diavasis/diavasi-elixir/blob/v0.1.0/notebooks/demo.livemd).
 
 ## Test
 
-`mix test` passes without a server. With `DIAVASI_DATA_ADDR`, `DIAVASI_CA`, and `DIAVASI_API_TOKEN` set, it consumes `DIAVASI_TOTAL` records (default 8) from `DIAVASI_GROUP`.
+`mix coveralls` runs the suite and enforces the floor in `coveralls.json`. It passes without a server. With `DIAVASI_DATA_ADDR`, `DIAVASI_CA`, and `DIAVASI_API_TOKEN` set, the live test consumes `DIAVASI_TOTAL` records (default 8) from `DIAVASI_GROUP`.
 
 ## Stage 0 bench
 

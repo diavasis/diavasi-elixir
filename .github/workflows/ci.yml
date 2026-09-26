@@ -14,5 +14,9 @@ jobs:
           elixir-version: "1.17"
           otp-version: "27"
       - run: mix deps.get
-      - run: mix test
+      - run: mix format --check-formatted
+      - run: mix credo --strict
+      - run: mix coveralls
+        env:
+          MIX_ENV: test
 

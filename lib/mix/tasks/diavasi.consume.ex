@@ -3,6 +3,15 @@ defmodule Mix.Tasks.Diavasi.Consume do
 
   @shortdoc "Consume a group over the TLS gRPC data plane"
 
+  @moduledoc """
+  Consume a Diavasi group from the command line.
+
+      mix diavasi.consume --addr 127.0.0.1:7710 --ca /tmp/diavasi-sdk/dataplane-ca.crt \\
+        --token sdk-demo --group demo --total 8
+  """
+
+  alias Diavasi.Data.Client
+
   def run(args) do
     Mix.Task.run("app.start")
 
@@ -20,7 +29,7 @@ defmodule Mix.Tasks.Diavasi.Consume do
         ]
       )
 
-    case Diavasi.Data.Client.run(opts) do
+    case Client.run(opts) do
       {:ok, record_ids, batch_ids} ->
         IO.puts("record_ids " <> Enum.join(record_ids, " "))
         IO.puts("batch_ids " <> Enum.join(batch_ids, " "))
