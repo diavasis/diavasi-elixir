@@ -7,7 +7,7 @@
 
 `Diavasi.Data.Client` is a supervised consumer of `diavasi.data.v1`. It opens a TLS stream, sends the bearer token, Hello version 1, then JoinGroup. `stream/1` yields batches. The caller acks with `ack/2`. `leave/1` is the clean stop. Dropping the process returns unacked batches to the server. The client stores no cursor and does not dedupe on `record_id`. Reconnect with the same consumer id and the server replays them.
 
-`proto/data.proto` in this repository is the copy of `diavasi.data.v1` from [github.com/diavasis/diavasi](https://github.com/diavasis/diavasi) tag `v0.12.0`. The Hex package is `diavasi` version 0.1.0. The Mix app is `:diavasi`.
+`proto/data.proto` in this repository is the copy of `diavasi.data.v1` from [github.com/diavasis/diavasi](https://github.com/diavasis/diavasi) tag `v0.13.0`. The Hex package is `diavasi` version 0.1.0. The Mix app is `:diavasi`.
 
 ## Install
 
@@ -346,7 +346,7 @@ end
 Start the server from the repo root:
 
 ```bash
-cargo build -p diavasi-cli
+cargo build -p diavasi
 export PATH="$PWD/target/debug:$PATH"
 mkdir -p /tmp/diavasi-sdk
 diavasi serve --bind 127.0.0.1:7700 --data-bind 127.0.0.1:7710 \

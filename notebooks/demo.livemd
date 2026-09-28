@@ -20,7 +20,7 @@ Build the server from [diavasi](https://github.com/diavasis/diavasi) and put the
 bin =
   System.get_env("DIAVASI_BIN") ||
     System.find_executable("diavasi") ||
-    raise "diavasi is not on PATH; build diavasi-cli from the server repository"
+    raise "diavasi is not on PATH; build diavasi from the server repository"
 
 python =
   System.get_env("DIAVASI_PYTHON") ||
