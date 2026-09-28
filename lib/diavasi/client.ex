@@ -1,4 +1,4 @@
-defmodule Diavasi.Data.Client do
+defmodule Diavasi.Client do
   @moduledoc """
   Supervised consumer for the `diavasi.data.v1` stream.
 
@@ -10,8 +10,8 @@ defmodule Diavasi.Data.Client do
   stores no cursor and does not dedupe on `record_id`. Reconnect with the same
   consumer id.
 
-  Option lists are `t:Diavasi.Data.Client.Behaviour.start_options/0` and
-  `t:Diavasi.Data.Client.Behaviour.run_options/0`.
+  Option lists are `t:Diavasi.Client.Behaviour.start_options/0` and
+  `t:Diavasi.Client.Behaviour.run_options/0`.
 
   ## Errors
 
@@ -33,24 +33,24 @@ defmodule Diavasi.Data.Client do
 
   ## Mocks
 
-  `put_client/1` installs another `Diavasi.Data.Client.Behaviour`:
+  `put_client/1` installs another `Diavasi.Client.Behaviour`:
 
-      Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Data.Client.Behaviour)
-      Diavasi.Data.Client.put_client(MyApp.DiavasiMock)
+      Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Client.Behaviour)
+      Diavasi.Client.put_client(MyApp.DiavasiMock)
 
-  `config :diavasi, client: MyApp.DiavasiMock` is the same switch.
+  `config :diavasi_client, client: MyApp.DiavasiMock` is the same switch.
   `reset_client/0` restores this module. Call `Mox.set_mox_global()` when the
   code under test runs in another process.
 
-  `Diavasi.Data.HTTP.put_client/1` replaces `Mint.HTTP` and keeps this client.
+  `Diavasi.HTTP.put_client/1` replaces `Mint.HTTP` and keeps this client.
   That mock also needs `Mox.set_mox_global()`, because the GenServer owns the socket.
   """
 
   use GenServer, restart: :transient
 
-  @behaviour Diavasi.Data.Client.Behaviour
+  @behaviour Diavasi.Client.Behaviour
 
-  alias Diavasi.Data.HTTP
+  alias Diavasi.HTTP
   alias Diavasi.Data.V1.{Ack, Envelope, FlowControl, Hello, JoinGroup, Leave}
 
   @path "/diavasi.data.v1.DataPlane/Consume"
@@ -58,7 +58,7 @@ defmodule Diavasi.Data.Client do
   @doc """
   Open a client, complete the handshake, and link it to the caller.
 
-  `opts` is a `t:Diavasi.Data.Client.Behaviour.start_options/0`.
+  `opts` is a `t:Diavasi.Client.Behaviour.start_options/0`.
 
     * `:addr` - required `String.t()`, `host:port` of the data plane.
     * `:ca` - required `Path.t()`, data-plane CA file.
@@ -80,14 +80,14 @@ defmodule Diavasi.Data.Client do
 
   ## Examples
 
-      iex> {:error, {%KeyError{key: :addr}, _}} = Diavasi.Data.Client.start_link([])
+      iex> {:error, {%KeyError{key: :addr}, _}} = Diavasi.Client.start_link([])
       iex> {:error, {{:badmatch, ["localhost"]}, _}} =
-      ...>   Diavasi.Data.Client.start_link(addr: "localhost", ca: "ca.pem", token: "t", group: "g")
+      ...>   Diavasi.Client.start_link(addr: "localhost", ca: "ca.pem", token: "t", group: "g")
       iex> {:error, {:badarg, _}} =
-      ...>   Diavasi.Data.Client.start_link(addr: "127.0.0.1:nope", ca: "ca.pem", token: "t", group: "g")
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      ...>   Diavasi.Client.start_link(addr: "127.0.0.1:nope", ca: "ca.pem", token: "t", group: "g")
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :start_link, fn opts ->
+      iex> Mox.stub(Diavasi.Client.Mock, :start_link, fn opts ->
       ...>   "127.0.0.1:7710" = opts[:addr]
       ...>   "/tmp/diavasi-sdk/dataplane-ca.crt" = opts[:ca]
       ...>   "sdk-demo" = opts[:token]
@@ -96,7 +96,7 @@ defmodule Diavasi.Data.Client do
       ...>   1 = opts[:max_in_flight]
       ...>   {:ok, :started}
       ...> end)
-      iex> Diavasi.Data.Client.start_link(
+      iex> Diavasi.Client.start_link(
       ...>   addr: "127.0.0.1:7710",
       ...>   ca: "/tmp/diavasi-sdk/dataplane-ca.crt",
       ...>   token: "sdk-demo",
@@ -105,40 +105,40 @@ defmodule Diavasi.Data.Client do
       ...>   max_in_flight: 1
       ...> )
       {:ok, :started}
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :start_link, fn _opts ->
+      iex> Mox.stub(Diavasi.Client.Mock, :start_link, fn _opts ->
       ...>   {:error, "protocol error 5: not running"}
       ...> end)
-      iex> Diavasi.Data.Client.start_link(addr: "127.0.0.1:7710", ca: "ca.pem", token: "t", group: "demo")
+      iex> Diavasi.Client.start_link(addr: "127.0.0.1:7710", ca: "ca.pem", token: "t", group: "demo")
       {:error, "protocol error 5: not running"}
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
-  @spec start_link(Diavasi.Data.Client.Behaviour.start_options()) :: GenServer.on_start()
-  @impl Diavasi.Data.Client.Behaviour
+  @spec start_link(Diavasi.Client.Behaviour.start_options()) :: GenServer.on_start()
+  @impl Diavasi.Client.Behaviour
   def start_link(opts) when is_list(opts) do
     dispatch(:start_link, [opts], fn -> open(opts) end)
   end
 
   @doc """
-  Install `module` for every `Diavasi.Data.Client.Behaviour` callback.
+  Install `module` for every `Diavasi.Client.Behaviour` callback.
 
   `module` is an atom and must not be this module. Returns `:ok`.
-  Raises `FunctionClauseError` when `module` is `Diavasi.Data.Client`.
+  Raises `FunctionClauseError` when `module` is `Diavasi.Client`.
   `reset_client/0` clears the setting.
 
   ## Examples
 
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn opts -> {:ok, [opts[:total]], [1]} end)
-      iex> Diavasi.Data.Client.run(total: 2, group: "demo")
+      iex> Mox.stub(Diavasi.Client.Mock, :run, fn opts -> {:ok, [opts[:total]], [1]} end)
+      iex> Diavasi.Client.run(total: 2, group: "demo")
       {:ok, [2], [1]}
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
   @spec put_client(module()) :: :ok
   def put_client(module) when is_atom(module) and module != __MODULE__ do
-    Application.put_env(:diavasi, :client, module)
+    Application.put_env(:diavasi_client, :client, module)
   end
 
   @doc """
@@ -148,16 +148,16 @@ defmodule Diavasi.Data.Client do
 
   ## Examples
 
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
-      iex> Application.get_env(:diavasi, :client)
+      iex> Application.get_env(:diavasi_client, :client)
       nil
   """
   @spec reset_client() :: :ok
   def reset_client do
-    Application.delete_env(:diavasi, :client)
+    Application.delete_env(:diavasi_client, :client)
     :ok
   end
 
@@ -177,29 +177,29 @@ defmodule Diavasi.Data.Client do
       ...>   batch_id: 7,
       ...>   records: [%Diavasi.Data.V1.Record{record_id: 1, payload: "a"}]
       ...> }
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :stream, fn pid ->
+      iex> Mox.stub(Diavasi.Client.Mock, :stream, fn pid ->
       ...>   true = is_pid(pid)
       ...>   [batch]
       ...> end)
-      iex> [got] = self() |> Diavasi.Data.Client.stream() |> Enum.to_list()
+      iex> [got] = self() |> Diavasi.Client.stream() |> Enum.to_list()
       iex> {got.batch_id, hd(got.records).payload}
       {7, "a"}
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :stream, fn _pid ->
+      iex> Mox.stub(Diavasi.Client.Mock, :stream, fn _pid ->
       ...>   raise "protocol error 5: not running"
       ...> end)
       iex> try do
-      ...>   self() |> Diavasi.Data.Client.stream() |> Enum.to_list()
+      ...>   self() |> Diavasi.Client.stream() |> Enum.to_list()
       ...> rescue
       ...>   RuntimeError -> :raised
       ...> end
       :raised
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
   @spec stream(pid()) :: Enumerable.t()
-  @impl Diavasi.Data.Client.Behaviour
+  @impl Diavasi.Client.Behaviour
   def stream(pid) when is_pid(pid) do
     dispatch(:stream, [pid], fn -> stream_batches(pid) end)
   end
@@ -234,28 +234,28 @@ defmodule Diavasi.Data.Client do
 
   ## Examples
 
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :next_batch, fn _pid ->
+      iex> Mox.stub(Diavasi.Client.Mock, :next_batch, fn _pid ->
       ...>   {:ok, %Diavasi.Data.V1.RecordBatch{batch_id: 4, records: []}}
       ...> end)
-      iex> {:ok, batch} = Diavasi.Data.Client.next_batch(self())
+      iex> {:ok, batch} = Diavasi.Client.next_batch(self())
       iex> batch.batch_id
       4
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :next_batch, fn _pid -> :done end)
-      iex> Diavasi.Data.Client.next_batch(self())
+      iex> Mox.stub(Diavasi.Client.Mock, :next_batch, fn _pid -> :done end)
+      iex> Diavasi.Client.next_batch(self())
       :done
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :next_batch, fn _pid ->
+      iex> Mox.stub(Diavasi.Client.Mock, :next_batch, fn _pid ->
       ...>   {:error, "protocol error 5: not running"}
       ...> end)
-      iex> Diavasi.Data.Client.next_batch(self())
+      iex> Diavasi.Client.next_batch(self())
       {:error, "protocol error 5: not running"}
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
   @spec next_batch(pid()) ::
           {:ok, Diavasi.Data.V1.RecordBatch.t()} | :done | {:error, String.t()}
-  @impl Diavasi.Data.Client.Behaviour
+  @impl Diavasi.Client.Behaviour
   def next_batch(pid) do
     dispatch(:next_batch, [pid], fn -> GenServer.call(pid, :next_batch, 60_000) end)
   end
@@ -277,17 +277,17 @@ defmodule Diavasi.Data.Client do
       ...>   {:DOWN, ^ref, :process, ^pid, _} -> :down
       ...> end
       :down
-      iex> {:noproc, _} = catch_exit(Diavasi.Data.Client.ack(pid, 1))
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> {:noproc, _} = catch_exit(Diavasi.Client.ack(pid, 1))
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :ack, fn _pid, 7 -> :ok end)
-      iex> Diavasi.Data.Client.ack(self(), 7)
+      iex> Mox.stub(Diavasi.Client.Mock, :ack, fn _pid, 7 -> :ok end)
+      iex> Diavasi.Client.ack(self(), 7)
       :ok
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
   @spec ack(pid(), non_neg_integer()) :: :ok
-  @impl Diavasi.Data.Client.Behaviour
+  @impl Diavasi.Client.Behaviour
   def ack(pid, batch_id) do
     dispatch(:ack, [pid, batch_id], fn -> GenServer.call(pid, {:ack, batch_id}) end)
   end
@@ -302,19 +302,19 @@ defmodule Diavasi.Data.Client do
 
   ## Examples
 
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :leave, fn pid ->
+      iex> Mox.stub(Diavasi.Client.Mock, :leave, fn pid ->
       ...>   true = is_pid(pid)
       ...>   :ok
       ...> end)
-      iex> Diavasi.Data.Client.leave(self())
+      iex> Diavasi.Client.leave(self())
       :ok
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
   @spec leave(pid()) :: :ok
-  @impl Diavasi.Data.Client.Behaviour
+  @impl Diavasi.Client.Behaviour
   def leave(pid) do
     dispatch(:leave, [pid], fn -> GenServer.call(pid, :leave) end)
   end
@@ -333,18 +333,18 @@ defmodule Diavasi.Data.Client do
       ...>   {:DOWN, ^ref, :process, ^pid, _} -> :down
       ...> end
       :down
-      iex> Diavasi.Data.Client.disconnect(pid)
+      iex> Diavasi.Client.disconnect(pid)
       :ok
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :disconnect, fn _pid -> :ok end)
-      iex> Diavasi.Data.Client.disconnect(self())
+      iex> Mox.stub(Diavasi.Client.Mock, :disconnect, fn _pid -> :ok end)
+      iex> Diavasi.Client.disconnect(self())
       :ok
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
   @spec disconnect(pid()) :: :ok
-  @impl Diavasi.Data.Client.Behaviour
+  @impl Diavasi.Client.Behaviour
   def disconnect(pid) do
     dispatch(:disconnect, [pid], fn ->
       if Process.alive?(pid), do: GenServer.stop(pid, :normal)
@@ -355,7 +355,7 @@ defmodule Diavasi.Data.Client do
   @doc """
   Ack `:total` records and then Leave.
 
-  `opts` is a `t:Diavasi.Data.Client.Behaviour.run_options/0`. It accepts every
+  `opts` is a `t:Diavasi.Client.Behaviour.run_options/0`. It accepts every
   `start_link/1` option, plus:
 
     * `:total` - required `non_neg_integer()`, records to ack.
@@ -375,20 +375,20 @@ defmodule Diavasi.Data.Client do
   ## Examples
 
       iex> try do
-      ...>   Diavasi.Data.Client.run([])
+      ...>   Diavasi.Client.run([])
       ...> rescue
       ...>   KeyError -> :missing_total
       ...> end
       :missing_total
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn opts ->
+      iex> Mox.stub(Diavasi.Client.Mock, :run, fn opts ->
       ...>   8 = opts[:total]
       ...>   1 = opts[:halt_after]
       ...>   "demo" = opts[:group]
       ...>   {:ok, [1, 2], [4]}
       ...> end)
-      iex> Diavasi.Data.Client.run(
+      iex> Diavasi.Client.run(
       ...>   addr: "127.0.0.1:7710",
       ...>   ca: "/tmp/diavasi-sdk/dataplane-ca.crt",
       ...>   token: "sdk-demo",
@@ -397,17 +397,17 @@ defmodule Diavasi.Data.Client do
       ...>   halt_after: 1
       ...> )
       {:ok, [1, 2], [4]}
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn _opts ->
+      iex> Mox.stub(Diavasi.Client.Mock, :run, fn _opts ->
       ...>   {:error, "incomplete consume records=0 batches=0"}
       ...> end)
-      iex> Diavasi.Data.Client.run(total: 8, group: "demo")
+      iex> Diavasi.Client.run(total: 8, group: "demo")
       {:error, "incomplete consume records=0 batches=0"}
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
-  @spec run(Diavasi.Data.Client.Behaviour.run_options()) ::
+  @spec run(Diavasi.Client.Behaviour.run_options()) ::
           {:ok, [non_neg_integer()], [non_neg_integer()]} | {:error, String.t()}
-  @impl Diavasi.Data.Client.Behaviour
+  @impl Diavasi.Client.Behaviour
   def run(opts) do
     dispatch(:run, [opts], fn -> consume(opts) end)
   end
@@ -787,7 +787,7 @@ defmodule Diavasi.Data.Client do
   defp take_frames(buffer, acc), do: {Enum.reverse(acc), buffer}
 
   defp dispatch(name, args, fun) do
-    case Application.get_env(:diavasi, :client) do
+    case Application.get_env(:diavasi_client, :client) do
       nil -> fun.()
       module -> apply(module, name, args)
     end

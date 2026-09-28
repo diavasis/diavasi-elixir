@@ -1,12 +1,12 @@
-defmodule Diavasi.Data.ClientCoverageTest do
+defmodule Diavasi.ClientCoverageTest do
   use ExUnit.Case, async: false
 
   import Mox
 
-  alias Diavasi.Data.Client
-  alias Diavasi.Data.HTTP
-  alias Diavasi.Data.HTTP.Mock
-  alias Diavasi.Data.HTTPScript
+  alias Diavasi.Client
+  alias Diavasi.HTTP
+  alias Diavasi.HTTP.Mock
+  alias Diavasi.HTTPScript
   alias Mix.Tasks.Diavasi.Consume
 
   alias Diavasi.Data.V1.{
@@ -25,7 +25,7 @@ defmodule Diavasi.Data.ClientCoverageTest do
   setup :verify_on_exit!
 
   setup do
-    previous = Application.get_env(:diavasi, :http_client)
+    previous = Application.get_env(:diavasi_client, :http_client)
     HTTP.put_client(Mock)
 
     on_exit(fn ->
@@ -327,6 +327,6 @@ defmodule Diavasi.Data.ClientCoverageTest do
 
   defp heartbeat, do: %Envelope{version: 1, body: {:heartbeat, %Heartbeat{}}}
 
-  defp restore(key, nil), do: Application.delete_env(:diavasi, key)
-  defp restore(key, value), do: Application.put_env(:diavasi, key, value)
+  defp restore(key, nil), do: Application.delete_env(:diavasi_client, key)
+  defp restore(key, value), do: Application.put_env(:diavasi_client, key, value)
 end

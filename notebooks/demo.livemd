@@ -4,7 +4,7 @@
 Mix.install([
   {:kino, "~> 0.14"},
   {:req, "~> 0.5"},
-  {:diavasi, path: Path.expand("..", __DIR__)}
+  {:diavasi_client, path: Path.expand("..", __DIR__)}
 ])
 ```
 
@@ -12,7 +12,7 @@ Mix.install([
 
 This notebook starts `diavasi serve`, synthetic groups, and the Python and Elixir clients. Each group uses the built-in `u64` generator (`total_records`, `batch_max_records`), so the notebook does not register a database connection. A group that reads an adapter sets `connection_id` and `source_spec` on `POST /v1/groups` instead.
 
-Build the server from [diavasi](https://github.com/diavasis/diavasi) and put the `diavasi` binary on `PATH`. Install the Python client with `pip install diavasi-data==0.1.0`. The Python CLI prints `record_ids` and `batch_ids`. `Diavasi.Data.Client.run/1` returns `{:ok, record_ids, batch_ids}`.
+Build the server from [diavasi](https://github.com/diavasis/diavasi) and put the `diavasi` binary on `PATH`. Install the Python client with `pip install diavasi-client==0.1.0`. The Python CLI prints `record_ids` and `batch_ids`. `Diavasi.Client.run/1` returns `{:ok, record_ids, batch_ids}`.
 
 ## Setup
 
@@ -25,7 +25,7 @@ bin =
 python =
   System.get_env("DIAVASI_PYTHON") ||
     System.find_executable("python3") ||
-    raise "python3 is not on PATH; pip install diavasi-data==0.1.0"
+    raise "python3 is not on PATH; pip install diavasi-client==0.1.0"
 
 python_env =
   case System.get_env("DIAVASI_PYTHONPATH") do
@@ -163,7 +163,7 @@ Kino.Layout.grid(
 
 ```elixir
 {:ok, elixir_ids, _elixir_batches} =
-  Diavasi.Data.Client.run(
+  Diavasi.Client.run(
     addr: data_addr,
     ca: ca,
     token: token,
@@ -178,7 +178,7 @@ Kino.Layout.grid(
     python,
     [
       "-m",
-      "diavasi_data",
+      "diavasi_client",
       "--addr",
       data_addr,
       "--ca",
@@ -234,7 +234,7 @@ python_task =
       python,
       [
         "-m",
-        "diavasi_data",
+        "diavasi_client",
         "--addr",
         data_addr,
         "--ca",
@@ -256,7 +256,7 @@ python_task =
   end)
 
 {:ok, elixir_share, _elixir_share_batches} =
-  Diavasi.Data.Client.run(
+  Diavasi.Client.run(
     addr: data_addr,
     ca: ca,
     token: token,
@@ -303,7 +303,7 @@ The first consumer acks one batch of 5, then drops the connection on the next ba
 create.("requeue", 20, 5)
 
 {:ok, dropped, _dropped_batches} =
-  Diavasi.Data.Client.run(
+  Diavasi.Client.run(
     addr: data_addr,
     ca: ca,
     token: token,
@@ -317,7 +317,7 @@ create.("requeue", 20, 5)
 Process.sleep(300)
 
 {:ok, resumed, _resumed_batches} =
-  Diavasi.Data.Client.run(
+  Diavasi.Client.run(
     addr: data_addr,
     ca: ca,
     token: token,

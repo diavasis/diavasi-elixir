@@ -1,24 +1,24 @@
 # Elixir client
 
 [![CI](https://github.com/diavasis/diavasi-elixir/actions/workflows/ci.yml/badge.svg)](https://github.com/diavasis/diavasi-elixir/actions/workflows/ci.yml)
-[![Hex.pm](https://img.shields.io/hexpm/v/diavasi.svg)](https://hex.pm/packages/diavasi)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-6e4a7e.svg)](https://hexdocs.pm/diavasi)
+[![Hex.pm](https://img.shields.io/hexpm/v/diavasi_client.svg)](https://hex.pm/packages/diavasi_client)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-6e4a7e.svg)](https://hexdocs.pm/diavasi_client)
 [![license](https://img.shields.io/github/license/diavasis/diavasi-elixir)](https://github.com/diavasis/diavasi-elixir/blob/main/LICENSE)
 
-`Diavasi.Data.Client` is a supervised consumer of `diavasi.data.v1`. It opens a TLS stream, sends the bearer token, Hello version 1, then JoinGroup. `stream/1` yields batches. The caller acks with `ack/2`. `leave/1` is the clean stop. Dropping the process returns unacked batches to the server. The client stores no cursor and does not dedupe on `record_id`. Reconnect with the same consumer id and the server replays them.
+`Diavasi.Client` is a supervised consumer of `diavasi.data.v1`. It opens a TLS stream, sends the bearer token, Hello version 1, then JoinGroup. `stream/1` yields batches. The caller acks with `ack/2`. `leave/1` is the clean stop. Dropping the process returns unacked batches to the server. The client stores no cursor and does not dedupe on `record_id`. Reconnect with the same consumer id and the server replays them.
 
-`proto/data.proto` in this repository is the copy of `diavasi.data.v1` from [github.com/diavasis/diavasi](https://github.com/diavasis/diavasi) tag `v0.13.0`. The Hex package is `diavasi` version 0.1.0. The Mix app is `:diavasi`.
+`proto/data.proto` in this repository is the copy of `diavasi.data.v1` from [github.com/diavasis/diavasi](https://github.com/diavasis/diavasi) tag `v0.13.0`. The Hex package is `diavasi_client` version 0.1.0. The Mix app is `:diavasi_client`.
 
 ## Install
 
 ```elixir
-{:diavasi, "~> 0.1.0"}
+{:diavasi_client, "~> 0.1.0"}
 ```
 
 ## Library
 
 ```elixir
-{:ok, pid} = Diavasi.Data.Client.start_link(
+{:ok, pid} = Diavasi.Client.start_link(
   addr: "127.0.0.1:7710",
   ca: "/tmp/diavasi-sdk/dataplane-ca.crt",
   token: "sdk-demo",
@@ -28,13 +28,13 @@
 )
 
 pid
-|> Diavasi.Data.Client.stream()
+|> Diavasi.Client.stream()
 |> Enum.each(fn batch ->
   IO.inspect(batch.batch_id)
-  Diavasi.Data.Client.ack(pid, batch.batch_id)
+  Diavasi.Client.ack(pid, batch.batch_id)
 end)
 
-Diavasi.Data.Client.leave(pid)
+Diavasi.Client.leave(pid)
 ```
 
 `run/1` consumes `:total` records and acks each batch. `:halt_after` closes after that many acks and does not send Leave. `disconnect/1` closes the stream the same way.
@@ -55,7 +55,7 @@ opts = [
 ]
 ```
 
-`Diavasi.Data.Client` is already a GenServer. The modules below are the process that owns it: they pull batches, print each record, ack, and stop on an error.
+`Diavasi.Client` is already a GenServer. The modules below are the process that owns it: they pull batches, print each record, ack, and stop on an error.
 
 ### GenServer
 
@@ -66,7 +66,7 @@ defmodule Demo.Consumer do
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
   def init(opts) do
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, client} ->
         send(self(), :pull)
         {:ok, %{client: client, seen: 0, total: Keyword.fetch!(opts, :total)}}
@@ -77,7 +77,7 @@ defmodule Demo.Consumer do
   end
 
   def handle_info(:pull, state) do
-    case Diavasi.Data.Client.next_batch(state.client) do
+    case Diavasi.Client.next_batch(state.client) do
       {:ok, batch} ->
         Enum.each(batch.records, fn record ->
           IO.puts(
@@ -85,11 +85,11 @@ defmodule Demo.Consumer do
           )
         end)
 
-        :ok = Diavasi.Data.Client.ack(state.client, batch.batch_id)
+        :ok = Diavasi.Client.ack(state.client, batch.batch_id)
         seen = state.seen + length(batch.records)
 
         if seen >= state.total do
-          :ok = Diavasi.Data.Client.leave(state.client)
+          :ok = Diavasi.Client.leave(state.client)
           {:stop, :normal, %{state | seen: seen}}
         else
           send(self(), :pull)
@@ -127,11 +127,11 @@ end
 ```elixir
 task =
   Task.async(fn ->
-    case Diavasi.Data.Client.start_link(Keyword.put(opts, :consumer, "elixir-task")) do
+    case Diavasi.Client.start_link(Keyword.put(opts, :consumer, "elixir-task")) do
       {:ok, pid} ->
         try do
           pid
-          |> Diavasi.Data.Client.stream()
+          |> Diavasi.Client.stream()
           |> Enum.reduce_while(0, fn batch, seen ->
             Enum.each(batch.records, fn record ->
               IO.puts(
@@ -139,12 +139,12 @@ task =
               )
             end)
 
-            :ok = Diavasi.Data.Client.ack(pid, batch.batch_id)
+            :ok = Diavasi.Client.ack(pid, batch.batch_id)
             seen = seen + length(batch.records)
             if seen >= opts[:total], do: {:halt, seen}, else: {:cont, seen}
           end)
         after
-          if Process.alive?(pid), do: Diavasi.Data.Client.leave(pid)
+          if Process.alive?(pid), do: Diavasi.Client.leave(pid)
         end
 
       {:error, reason} ->
@@ -162,8 +162,8 @@ end
 
 ```elixir
 try do
-  pid |> Diavasi.Data.Client.stream() |> Enum.each(fn batch ->
-    :ok = Diavasi.Data.Client.ack(pid, batch.batch_id)
+  pid |> Diavasi.Client.stream() |> Enum.each(fn batch ->
+    :ok = Diavasi.Client.ack(pid, batch.batch_id)
   end)
 rescue
   e in RuntimeError -> IO.puts(:stderr, Exception.message(e))
@@ -175,10 +175,10 @@ end
 Add `{:flow, "~> 1.2"}` to the application `mix.exs`. Keep one stage and `max_demand: 1` so the client acks one batch before the next pull.
 
 ```elixir
-{:ok, pid} = Diavasi.Data.Client.start_link(Keyword.put(opts, :consumer, "elixir-flow"))
+{:ok, pid} = Diavasi.Client.start_link(Keyword.put(opts, :consumer, "elixir-flow"))
 
 pid
-|> Diavasi.Data.Client.stream()
+|> Diavasi.Client.stream()
 |> Stream.transform(0, fn batch, seen ->
   if seen >= opts[:total], do: {:halt, seen}, else: {[batch], seen + length(batch.records)}
 end)
@@ -190,12 +190,12 @@ end)
     )
   end)
 
-  :ok = Diavasi.Data.Client.ack(pid, batch.batch_id)
+  :ok = Diavasi.Client.ack(pid, batch.batch_id)
   batch
 end)
 |> Flow.run()
 
-Diavasi.Data.Client.leave(pid)
+Diavasi.Client.leave(pid)
 ```
 
 ### GenStage
@@ -209,7 +209,7 @@ defmodule Diavasi.Examples.Producer do
   def start_link(opts), do: GenStage.start_link(__MODULE__, opts)
 
   def init(opts) do
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, client} ->
         {:producer, %{client: client, seen: 0, total: Keyword.fetch!(opts, :total)}}
 
@@ -223,7 +223,7 @@ defmodule Diavasi.Examples.Producer do
   end
 
   def handle_demand(demand, state) when demand > 0 do
-    case Diavasi.Data.Client.next_batch(state.client) do
+    case Diavasi.Client.next_batch(state.client) do
       {:ok, batch} ->
         event = %{client: state.client, batch: batch}
         {:noreply, [event], %{state | seen: state.seen + length(batch.records)}}
@@ -254,7 +254,7 @@ defmodule Diavasi.Examples.StageConsumer do
         )
       end)
 
-      :ok = Diavasi.Data.Client.ack(client, batch.batch_id)
+      :ok = Diavasi.Client.ack(client, batch.batch_id)
     end)
 
     {:noreply, [], state}
@@ -278,7 +278,7 @@ defmodule Diavasi.Examples.BroadwayProducer do
   def start_link(opts), do: GenStage.start_link(__MODULE__, opts)
 
   def init(opts) do
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, client} ->
         {:producer, %{client: client, seen: 0, total: Keyword.fetch!(opts, :total)}}
 
@@ -292,7 +292,7 @@ defmodule Diavasi.Examples.BroadwayProducer do
   end
 
   def handle_demand(_demand, state) do
-    case Diavasi.Data.Client.next_batch(state.client) do
+    case Diavasi.Client.next_batch(state.client) do
       {:ok, batch} ->
         event = %{client: state.client, batch: batch}
         {:noreply, [event], %{state | seen: state.seen + length(batch.records)}}
@@ -330,7 +330,7 @@ defmodule Diavasi.Examples.Pipeline do
       )
     end)
 
-    :ok = Diavasi.Data.Client.ack(client, batch.batch_id)
+    :ok = Diavasi.Client.ack(client, batch.batch_id)
     message
   end
 end
@@ -353,9 +353,11 @@ diavasi serve --bind 127.0.0.1:7700 --data-bind 127.0.0.1:7710 \
   --store /tmp/diavasi-sdk/state --token sdk-demo
 ```
 
-In a second terminal, from the repo root, create the group and run one script. Delete and create the group again before the next script, because each one consumes all eight records.
+In a second terminal, from the repo root, create the group and run one script. Each script consumes all eight records. Pause, delete, create, and start the group before the next one. Delete returns 409 while the group is running, and start on an existing group resumes its cursor, so a later client waits on heartbeats and prints nothing.
 
 ```bash
+curl -fsS -X POST -H "Authorization: Bearer sdk-demo" \
+  http://127.0.0.1:7700/v1/groups/demo/pause || true
 curl -fsS -X DELETE -H "Authorization: Bearer sdk-demo" \
   http://127.0.0.1:7700/v1/groups/demo || true
 curl -fsS -H "Authorization: Bearer sdk-demo" -H "content-type: application/json" \
@@ -397,16 +399,16 @@ With `DIAVASI_DATA_ADDR`, `DIAVASI_CA`, and `DIAVASI_API_TOKEN` set, the integra
 
 ## Mocks
 
-`Diavasi.Data.Client.put_client/1` swaps in a module that implements `Diavasi.Data.Client.Behaviour`. Add `{:mox, "~> 1.2", only: :test}` to the service and turn the mock on from `test/test_helper.exs`:
+`Diavasi.Client.put_client/1` swaps in a module that implements `Diavasi.Client.Behaviour`. Add `{:mox, "~> 1.2", only: :test}` to the service and turn the mock on from `test/test_helper.exs`:
 
 ```elixir
-Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Data.Client.Behaviour)
-Diavasi.Data.Client.put_client(MyApp.DiavasiMock)
+Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Client.Behaviour)
+Diavasi.Client.put_client(MyApp.DiavasiMock)
 ```
 
-`config :diavasi, client: MyApp.DiavasiMock` in `config/test.exs` is the same switch. `Diavasi.Data.Client.reset_client/0` restores the real client. Call `Mox.set_mox_global()` when the code under test runs in another process.
+`config :diavasi_client, client: MyApp.DiavasiMock` in `config/test.exs` is the same switch. `Diavasi.Client.reset_client/0` restores the real client. Call `Mox.set_mox_global()` when the code under test runs in another process.
 
-`Diavasi.Data.HTTP.put_client/1` is the lower-level switch. It keeps `Diavasi.Data.Client` and replaces `Mint.HTTP`, which is how this library scripts a Diavasi server. That mock needs `Mox.set_mox_global()` as well, because the GenServer owns the connection.
+`Diavasi.HTTP.put_client/1` is the lower-level switch. It keeps `Diavasi.Client` and replaces `Mint.HTTP`, which is how this library scripts a Diavasi server. That mock needs `Mox.set_mox_global()` as well, because the GenServer owns the connection.
 
 ## Stage 0 bench
 

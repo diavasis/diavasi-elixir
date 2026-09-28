@@ -1,9 +1,9 @@
-defmodule Diavasi.Data.ClientTest do
+defmodule Diavasi.ClientTest do
   use ExUnit.Case
 
   @moduletag :integration
 
-  alias Diavasi.Data.Client
+  alias Diavasi.Client
 
   test "consume acks every batch when a data plane is configured" do
     addr = System.get_env("DIAVASI_DATA_ADDR")

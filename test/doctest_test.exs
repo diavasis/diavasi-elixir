@@ -1,8 +1,8 @@
 defmodule Diavasi.DoctestTest do
   use ExUnit.Case, async: false
 
-  alias Diavasi.Data.Client
-  alias Diavasi.Data.HTTP
+  alias Diavasi.Client
+  alias Diavasi.HTTP
 
   setup do
     on_exit(fn ->
@@ -13,9 +13,9 @@ defmodule Diavasi.DoctestTest do
     :ok
   end
 
-  doctest Diavasi.Data.Client
-  doctest Diavasi.Data.Client.Behaviour
-  doctest Diavasi.Data.HTTP
+  doctest Diavasi.Client
+  doctest Diavasi.Client.Behaviour
+  doctest Diavasi.HTTP
   doctest Diavasi.Data.V1.Hello
   doctest Diavasi.Data.V1.HelloAck
   doctest Diavasi.Data.V1.JoinGroup

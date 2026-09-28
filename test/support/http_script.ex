@@ -1,10 +1,10 @@
-defmodule Diavasi.Data.HTTPScript do
+defmodule Diavasi.HTTPScript do
   @moduledoc false
 
   import Mox
 
-  alias Diavasi.Data.HTTP
-  alias Diavasi.Data.HTTP.Mock
+  alias Diavasi.HTTP
+  alias Diavasi.HTTP.Mock
 
   def install(responses, opts \\ []) do
     {:ok, agent} =

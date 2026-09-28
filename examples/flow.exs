@@ -8,11 +8,11 @@ opts = [
   total: 8
 ]
 
-case Diavasi.Data.Client.start_link(opts) do
+case Diavasi.Client.start_link(opts) do
   {:ok, pid} ->
     try do
       pid
-      |> Diavasi.Data.Client.stream()
+      |> Diavasi.Client.stream()
       |> Stream.transform(0, fn batch, seen ->
         if seen >= opts[:total], do: {:halt, seen}, else: {[batch], seen + length(batch.records)}
       end)
@@ -24,7 +24,7 @@ case Diavasi.Data.Client.start_link(opts) do
           )
         end)
 
-        :ok = Diavasi.Data.Client.ack(pid, batch.batch_id)
+        :ok = Diavasi.Client.ack(pid, batch.batch_id)
         batch
       end)
       |> Flow.run()
@@ -33,7 +33,7 @@ case Diavasi.Data.Client.start_link(opts) do
         IO.puts(:stderr, Exception.message(e))
         System.halt(1)
     after
-      if Process.alive?(pid), do: Diavasi.Data.Client.leave(pid)
+      if Process.alive?(pid), do: Diavasi.Client.leave(pid)
     end
 
   {:error, reason} ->

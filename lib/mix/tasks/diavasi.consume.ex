@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Diavasi.Consume do
     * `--token` - required `String.t()`, bearer token.
     * `--group` - required `String.t()`, group id.
     * `--total` - required integer, records to ack.
-    * `--consumer` - optional string. `Diavasi.Data.Client` uses `"elixir"` when omitted.
+    * `--consumer` - optional string. `Diavasi.Client` uses `"elixir"` when omitted.
     * `--max-in-flight` - optional integer. Default `1`.
     * `--halt-after` - optional integer. After this many acks, disconnect without Leave.
 
@@ -30,15 +30,15 @@ defmodule Mix.Tasks.Diavasi.Consume do
       batch_ids 4
       elixir consumed 2 records in 1 batches
 
-  On `{:error, reason}` from `Diavasi.Data.Client.run/1`, prints `reason` to the
+  On `{:error, reason}` from `Diavasi.Client.run/1`, prints `reason` to the
   shell and exits `{:shutdown, code}`. `code` is the integer in
   `"protocol error N"`, or `1` for every other error.
 
   ## Examples
 
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn opts ->
+      iex> Mox.stub(Diavasi.Client.Mock, :run, fn opts ->
       ...>   8 = opts[:total]
       ...>   "demo" = opts[:group]
       ...>   "elixir" = opts[:consumer]
@@ -52,7 +52,7 @@ defmodule Mix.Tasks.Diavasi.Consume do
       ...>   )
       ...> end)
       "record_ids 1 2\\nbatch_ids 4\\nelixir consumed 2 records in 1 batches\\n"
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
 
       iex> try do
@@ -62,9 +62,9 @@ defmodule Mix.Tasks.Diavasi.Consume do
       ...> end
       :parse_error
 
-      iex> Diavasi.Data.Client.put_client(Diavasi.Data.Client.Mock)
+      iex> Diavasi.Client.put_client(Diavasi.Client.Mock)
       :ok
-      iex> Mox.stub(Diavasi.Data.Client.Mock, :run, fn _opts ->
+      iex> Mox.stub(Diavasi.Client.Mock, :run, fn _opts ->
       ...>   {:error, "protocol error 5: not running"}
       ...> end)
       iex> catch_exit(
@@ -75,11 +75,11 @@ defmodule Mix.Tasks.Diavasi.Consume do
       ...>   end)
       ...> )
       {:shutdown, 5}
-      iex> Diavasi.Data.Client.reset_client()
+      iex> Diavasi.Client.reset_client()
       :ok
   """
 
-  alias Diavasi.Data.Client
+  alias Diavasi.Client
 
   def run(args) do
     Mix.Task.run("app.start")

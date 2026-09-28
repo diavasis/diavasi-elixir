@@ -1,4 +1,4 @@
-Mox.defmock(Diavasi.Data.HTTP.Mock, for: Diavasi.Data.HTTP)
-Mox.defmock(Diavasi.Data.Client.Mock, for: Diavasi.Data.Client.Behaviour)
+Mox.defmock(Diavasi.HTTP.Mock, for: Diavasi.HTTP)
+Mox.defmock(Diavasi.Client.Mock, for: Diavasi.Client.Behaviour)
 
 ExUnit.start(exclude: [:integration])

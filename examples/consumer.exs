@@ -14,7 +14,7 @@ defmodule Demo.Consumer do
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
   def init(opts) do
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, client} ->
         send(self(), :pull)
         {:ok, %{client: client, seen: 0, total: Keyword.fetch!(opts, :total)}}
@@ -25,7 +25,7 @@ defmodule Demo.Consumer do
   end
 
   def handle_info(:pull, state) do
-    case Diavasi.Data.Client.next_batch(state.client) do
+    case Diavasi.Client.next_batch(state.client) do
       {:ok, batch} ->
         Enum.each(batch.records, fn record ->
           IO.puts(
@@ -33,11 +33,11 @@ defmodule Demo.Consumer do
           )
         end)
 
-        :ok = Diavasi.Data.Client.ack(state.client, batch.batch_id)
+        :ok = Diavasi.Client.ack(state.client, batch.batch_id)
         seen = state.seen + length(batch.records)
 
         if seen >= state.total do
-          :ok = Diavasi.Data.Client.leave(state.client)
+          :ok = Diavasi.Client.leave(state.client)
           {:stop, :normal, %{state | seen: seen}}
         else
           send(self(), :pull)

@@ -1,22 +1,22 @@
-defmodule Diavasi.Data.ClientMockTest do
+defmodule Diavasi.ClientMockTest do
   use ExUnit.Case, async: false
 
   import Mox
 
-  alias Diavasi.Data.Client
-  alias Diavasi.Data.Client.Mock
+  alias Diavasi.Client
+  alias Diavasi.Client.Mock
 
   setup :verify_on_exit!
 
   setup do
-    previous = Application.get_env(:diavasi, :client)
+    previous = Application.get_env(:diavasi_client, :client)
     Client.put_client(Mock)
 
     on_exit(fn ->
       Client.reset_client()
 
       if previous do
-        Application.put_env(:diavasi, :client, previous)
+        Application.put_env(:diavasi_client, :client, previous)
       end
     end)
 
@@ -55,6 +55,6 @@ defmodule Diavasi.Data.ClientMockTest do
 
     assert {:ok, [1], [1]} = Client.run(total: 1)
     assert :ok = Client.reset_client()
-    assert Application.get_env(:diavasi, :client) == nil
+    assert Application.get_env(:diavasi_client, :client) == nil
   end
 end

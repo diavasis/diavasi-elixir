@@ -17,7 +17,7 @@ defmodule Diavasi.Examples.Producer do
   def start_link(opts), do: GenStage.start_link(__MODULE__, opts)
 
   def init(opts) do
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, client} ->
         {:producer,
          %{
@@ -37,7 +37,7 @@ defmodule Diavasi.Examples.Producer do
   end
 
   def handle_demand(demand, state) when demand > 0 do
-    case Diavasi.Data.Client.next_batch(state.client) do
+    case Diavasi.Client.next_batch(state.client) do
       {:ok, batch} ->
         event = %{client: state.client, batch: batch}
         {:noreply, [event], %{state | seen: state.seen + length(batch.records)}}
@@ -72,7 +72,7 @@ defmodule Diavasi.Examples.StageConsumer do
           )
         end)
 
-        :ok = Diavasi.Data.Client.ack(client, batch.batch_id)
+        :ok = Diavasi.Client.ack(client, batch.batch_id)
         seen + length(batch.records)
       end)
 

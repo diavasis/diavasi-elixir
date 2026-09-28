@@ -10,11 +10,11 @@ opts = [
 
 task =
   Task.async(fn ->
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, pid} ->
         try do
           pid
-          |> Diavasi.Data.Client.stream()
+          |> Diavasi.Client.stream()
           |> Enum.reduce_while(0, fn batch, seen ->
             Enum.each(batch.records, fn record ->
               IO.puts(
@@ -22,7 +22,7 @@ task =
               )
             end)
 
-            :ok = Diavasi.Data.Client.ack(pid, batch.batch_id)
+            :ok = Diavasi.Client.ack(pid, batch.batch_id)
             seen = seen + length(batch.records)
             if seen >= opts[:total], do: {:halt, seen}, else: {:cont, seen}
           end)
@@ -30,7 +30,7 @@ task =
           e in RuntimeError ->
             {:error, Exception.message(e)}
         after
-          if Process.alive?(pid), do: Diavasi.Data.Client.leave(pid)
+          if Process.alive?(pid), do: Diavasi.Client.leave(pid)
         end
 
       {:error, reason} ->

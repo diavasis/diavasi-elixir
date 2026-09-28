@@ -6,7 +6,7 @@ defmodule Diavasi.MixProject do
 
   def project do
     [
-      app: :diavasi,
+      app: :diavasi_client,
       version: @version,
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
@@ -48,9 +48,9 @@ defmodule Diavasi.MixProject do
 
   defp package do
     [
-      name: "diavasi",
+      name: "diavasi_client",
       files:
-        ~w(lib/diavasi_data lib/mix/tasks/diavasi.consume.ex .formatter.exs mix.exs README.md CHANGELOG.md LICENSE proto),
+        ~w(lib/diavasi lib/diavasi_data lib/mix/tasks/diavasi.consume.ex .formatter.exs mix.exs README.md CHANGELOG.md LICENSE proto),
       licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => @source_url,

@@ -20,7 +20,7 @@ defmodule Diavasi.Examples.BroadwayProducer do
   def start_link(opts), do: GenStage.start_link(__MODULE__, opts)
 
   def init(opts) do
-    case Diavasi.Data.Client.start_link(opts) do
+    case Diavasi.Client.start_link(opts) do
       {:ok, client} ->
         {:producer, %{client: client, seen: 0, total: Keyword.fetch!(opts, :total)}}
 
@@ -34,7 +34,7 @@ defmodule Diavasi.Examples.BroadwayProducer do
   end
 
   def handle_demand(_demand, state) do
-    case Diavasi.Data.Client.next_batch(state.client) do
+    case Diavasi.Client.next_batch(state.client) do
       {:ok, batch} ->
         event = %{client: state.client, batch: batch}
         {:noreply, [event], %{state | seen: state.seen + length(batch.records)}}
@@ -72,7 +72,7 @@ defmodule Diavasi.Examples.Pipeline do
       )
     end)
 
-    :ok = Diavasi.Data.Client.ack(client, batch.batch_id)
+    :ok = Diavasi.Client.ack(client, batch.batch_id)
     Diavasi.Examples.Progress.add(length(batch.records))
     message
   end

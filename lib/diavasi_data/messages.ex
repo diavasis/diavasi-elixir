@@ -49,7 +49,7 @@ defmodule Diavasi.Data.V1.JoinGroup do
 
   ## Fields
 
-    * `group_id` - `String.t()`. Group id from `Diavasi.Data.Client.start_link/1`.
+    * `group_id` - `String.t()`. Group id from `Diavasi.Client.start_link/1`.
     * `consumer_id` - `String.t()`. Consumer id. The client default is `"elixir"`.
 
   ## Examples
@@ -114,11 +114,11 @@ end
 
 defmodule Diavasi.Data.V1.RecordBatch do
   @moduledoc """
-  A batch of records. `Diavasi.Data.Client.next_batch/1` and `stream/1` yield this struct.
+  A batch of records. `Diavasi.Client.next_batch/1` and `stream/1` yield this struct.
 
   ## Fields
 
-    * `batch_id` - `non_neg_integer()`. Pass this to `Diavasi.Data.Client.ack/2`.
+    * `batch_id` - `non_neg_integer()`. Pass this to `Diavasi.Client.ack/2`.
     * `records` - list of `Diavasi.Data.V1.Record`. May be empty.
 
   ## Examples
@@ -161,7 +161,7 @@ end
 
 defmodule Diavasi.Data.V1.Nack do
   @moduledoc """
-  Reserved batch rejection. `Diavasi.Data.Client` does not send this message.
+  Reserved batch rejection. `Diavasi.Client` does not send this message.
 
   ## Fields
 
@@ -199,7 +199,7 @@ end
 
 defmodule Diavasi.Data.V1.FlowControl do
   @moduledoc """
-  Client limit on unacked batches. `Diavasi.Data.Client` sends this once, after `Diavasi.Data.V1.Joined`.
+  Client limit on unacked batches. `Diavasi.Client` sends this once, after `Diavasi.Data.V1.Joined`.
 
   ## Fields
 
@@ -256,9 +256,9 @@ end
 
 defmodule Diavasi.Data.V1.Leave do
   @moduledoc """
-  Client end of the stream. `Diavasi.Data.Client.leave/1` sends this, then half-closes the request.
+  Client end of the stream. `Diavasi.Client.leave/1` sends this, then half-closes the request.
 
-  This message has no fields. Dropping the process, or `Diavasi.Data.Client.disconnect/1`,
+  This message has no fields. Dropping the process, or `Diavasi.Client.disconnect/1`,
   skips Leave. The server then replays unacked batches.
 
   ## Examples

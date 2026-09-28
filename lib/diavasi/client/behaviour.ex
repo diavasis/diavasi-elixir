@@ -1,22 +1,22 @@
-defmodule Diavasi.Data.Client.Behaviour do
+defmodule Diavasi.Client.Behaviour do
   @moduledoc """
-  Callbacks implemented by `Diavasi.Data.Client`.
+  Callbacks implemented by `Diavasi.Client`.
 
-  Install another implementation with `Diavasi.Data.Client.put_client/1`.
-  `config :diavasi, client: MyApp.Diavasi` is the same switch.
-  `Diavasi.Data.Client.reset_client/0` restores `Diavasi.Data.Client`.
+  Install another implementation with `Diavasi.Client.put_client/1`.
+  `config :diavasi_client, client: MyApp.Diavasi` is the same switch.
+  `Diavasi.Client.reset_client/0` restores `Diavasi.Client`.
 
   With [Mox](https://hexdocs.pm/mox), define the mock before the tests call the client:
 
-      Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Data.Client.Behaviour)
-      Diavasi.Data.Client.put_client(MyApp.DiavasiMock)
+      Mox.defmock(MyApp.DiavasiMock, for: Diavasi.Client.Behaviour)
+      Diavasi.Client.put_client(MyApp.DiavasiMock)
 
   Call `Mox.set_mox_global()` when the code under test runs in another process.
 
   A test double can be a normal module:
 
       defmodule MyApp.Diavasi do
-        @behaviour Diavasi.Data.Client.Behaviour
+        @behaviour Diavasi.Client.Behaviour
 
         @impl true
         def start_link(opts), do: {:ok, opts[:group]}
