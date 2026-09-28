@@ -50,8 +50,8 @@ defmodule Diavasi.Client do
 
   @behaviour Diavasi.Client.Behaviour
 
-  alias Diavasi.HTTP
   alias Diavasi.Data.V1.{Ack, Envelope, FlowControl, Hello, JoinGroup, Leave}
+  alias Diavasi.HTTP
 
   @path "/diavasi.data.v1.DataPlane/Consume"
 
